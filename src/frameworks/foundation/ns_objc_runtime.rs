@@ -33,6 +33,13 @@ fn NSClassFromString(env: &mut Environment, string: id) -> Class {
     // TODO: avoid copy?
     let string = ns_string::to_rust_string(env, string);
 
+    // PATCH: ad SDKs (Google AdMob) aren't supported. Apps usually check
+    // whether such a class exists, so return nil to make them skip ads.
+    if string.starts_with("GAD") || string.starts_with("AdMob") {
+        log!("NSClassFromString({:?}) -> nil (ad SDK not available)", string);
+        return nil;
+    }
+
     // While this method is supposed to return nil if the class is not found,
     // touchHLE is missing many classes that apps might expect to be present,
     // so this could be troublesome. So, let's use get_known_class, which panics
