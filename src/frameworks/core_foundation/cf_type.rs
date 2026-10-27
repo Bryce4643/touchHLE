@@ -45,10 +45,16 @@ pub fn CFHash(env: &mut Environment, object: CFTypeRef) -> CFHashCode {
     msg![env; object hash]
 }
 
+/// There is no garbage collection on iOS, so this just returns its argument.
+pub fn CFMakeCollectable(_env: &mut Environment, object: CFTypeRef) -> CFTypeRef {
+    object
+}
+
 pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CFRetain(_)),
     export_c_func!(CFRelease(_)),
     export_c_func!(CFGetRetainCount(_)),
     export_c_func!(CFEqual(_, _)),
     export_c_func!(CFHash(_)),
+    export_c_func!(CFMakeCollectable(_)),
 ];
