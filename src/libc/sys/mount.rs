@@ -76,15 +76,15 @@ fn fake_statfs() -> statfs {
 
 /// Internal helper for `statfs`, not a part of the API.
 pub fn statfs_inner(env: &mut Environment, path: ConstPtr<u8>) -> Result<statfs, i32> {
-    // FIXME does directory matter?
-    assert!(env
-        .mem
-        .cstr_at_utf8(path)
-        .is_ok_and(|path| path.starts_with(env.fs.home_directory().join("Documents").as_str())));
+    // PATCH: don't panic for paths outside Documents; return fake stats.
+    let path = env.mem.cstr_at_utf8(path).unwrap().to_string();
+    if !path.starts_with(env.fs.home_directory().join("Documents").as_str()) {
+        log!("statfs on non-Documents path {:?}, returning fake stats", path);
+        return Ok(fake_statfs());
+    }
 
     // TODO: Handle additional errors
-    let path = env.mem.cstr_at_utf8(path).unwrap();
-    if !env.fs.exists(GuestPath::new(path)) {
+    if !env.fs.exists(GuestPath::new(&path)) {
         return Err(ENOENT);
     }
 
