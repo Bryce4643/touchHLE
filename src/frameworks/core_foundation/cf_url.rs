@@ -12,11 +12,11 @@ use super::cf_allocator::{kCFAllocatorDefault, CFAllocatorRef};
 use super::CFIndex;
 use crate::dyld::{export_c_func, FunctionExports};
 use crate::frameworks::core_foundation::cf_string::{
-    kCFStringEncodingASCII, CFStringConvertEncodingToNSStringEncoding, CFStringEncoding,
-    CFStringRef,
+    kCFStringEncodingASCII, kCFStringEncodingUTF8, CFStringConvertEncodingToNSStringEncoding,
+    CFStringEncoding, CFStringRef,
 };
 use crate::frameworks::foundation::ns_string::{
-    get_static_str, to_rust_string, NSUTF8StringEncoding,
+    from_rust_string, get_static_str, to_rust_string, NSUTF8StringEncoding,
 };
 use crate::frameworks::foundation::NSUInteger;
 use crate::mem::{ConstPtr, MutPtr, Ptr};
@@ -194,6 +194,64 @@ fn CFURLHasDirectoryPath(env: &mut Environment, url: CFURLRef) -> bool {
         || msg![env; last isEqual:(get_static_str(env, ".."))]
 }
 
+/// Helper for `CFURLCreateStringByAddingPercentEscapes`, not a part of the API.
+fn add_percent_escapes(original: &str, leave_unescaped: &str, to_be_escaped: &str) -> String {
+    let mut out = String::with_capacity(original.len());
+    for c in original.chars() {
+        // Same set of characters that NSString's
+        // stringByAddingPercentEscapesUsingEncoding: leaves alone.
+        let legal = c.is_ascii_alphanumeric() || "-_.~!*'();:@&=+$,/?%#".contains(c);
+        let escape = if leave_unescaped.contains(c) {
+            false
+        } else if to_be_escaped.contains(c) {
+            true
+        } else {
+            !legal
+        };
+        if escape {
+            let mut buf = [0u8; 4];
+            for byte in c.encode_utf8(&mut buf).bytes() {
+                out.push_str(&format!("%{:02X}", byte));
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+fn CFURLCreateStringByAddingPercentEscapes(
+    env: &mut Environment,
+    _allocator: CFAllocatorRef,
+    original_string: CFStringRef,
+    chars_to_leave_unescaped: CFStringRef,
+    legal_chars_to_be_escaped: CFStringRef,
+    encoding: CFStringEncoding,
+) -> CFStringRef {
+    if original_string.is_null() {
+        return Ptr::null();
+    }
+    if encoding != kCFStringEncodingUTF8 && encoding != kCFStringEncodingASCII {
+        log!(
+            "CFURLCreateStringByAddingPercentEscapes: encoding {:#x} not supported, assuming UTF-8",
+            encoding
+        );
+    }
+    let original = to_rust_string(env, original_string).into_owned();
+    let leave_unescaped = if chars_to_leave_unescaped.is_null() {
+        String::new()
+    } else {
+        to_rust_string(env, chars_to_leave_unescaped).into_owned()
+    };
+    let to_be_escaped = if legal_chars_to_be_escaped.is_null() {
+        String::new()
+    } else {
+        to_rust_string(env, legal_chars_to_be_escaped).into_owned()
+    };
+    let escaped = add_percent_escapes(&original, &leave_unescaped, &to_be_escaped);
+    from_rust_string(env, escaped)
+}
+
 pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CFURLGetFileSystemRepresentation(_, _, _, _)),
     export_c_func!(CFURLCreateFromFileSystemRepresentation(_, _, _, _)),
@@ -205,4 +263,5 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(CFURLCreateCopyAppendingPathComponent(_, _, _, _)),
     export_c_func!(CFURLCreateCopyDeletingLastPathComponent(_, _)),
     export_c_func!(CFURLHasDirectoryPath(_)),
+    export_c_func!(CFURLCreateStringByAddingPercentEscapes(_, _, _, _, _)),
 ];
