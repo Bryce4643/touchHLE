@@ -1176,4 +1176,24 @@ pub const FUNCTIONS: FunctionExports = &[
     export_c_func!(AudioQueueFlush(_)),
     export_c_func!(AudioQueueFreeBuffer(_, _)),
     export_c_func!(AudioQueueDispose(_, _)),
+    export_c_func!(AudioQueueSetOfflineRenderFormat(_, _, _)),
 ];
+/// Offline rendering is not supported. Passing a NULL format turns it off,
+/// which is the default state anyway, so that case is a harmless no-op.
+fn AudioQueueSetOfflineRenderFormat(
+    _env: &mut Environment,
+    in_aq: AudioQueueRef,
+    in_format: ConstPtr<AudioStreamBasicDescription>,
+    in_layout: ConstVoidPtr,
+) -> OSStatus {
+    return_if_null!(in_aq);
+    if !in_format.is_null() {
+        log!(
+            "TODO: AudioQueueSetOfflineRenderFormat({:?}, {:?}, {:?}): offline rendering is not supported",
+            in_aq,
+            in_format,
+            in_layout
+        );
+    }
+    0 // success
+}
