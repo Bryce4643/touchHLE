@@ -1319,6 +1319,62 @@ pub const CLASSES: ClassExports = objc_classes! {
     let res: id = msg![env; left stringByAppendingString:right];
     () = msg![env; this setString:res];
 }
+    - (NSUInteger)replaceOccurrencesOfString:(id)target // NSString*
+                              withString:(id)replacement // NSString*
+                                 options:(NSStringCompareOptions)options
+                                   range:(NSRange)range {
+    // Works on UTF-16 code units, like NSRange does.
+    let hay: Vec<u16> = to_rust_string(env, this).encode_utf16().collect();
+    let needle: Vec<u16> = to_rust_string(env, target).encode_utf16().collect();
+    let repl: Vec<u16> = to_rust_string(env, replacement).encode_utf16().collect();
+    let case_insensitive = options & NSCaseInsensitiveSearch != 0;
+    // Only ASCII case folding is supported.
+    let fold = |u: u16| -> u16 {
+        if (0x41..=0x5A).contains(&u) {
+            u + 0x20
+        } else {
+            u
+        }
+    };
+
+    let start = (range.location as usize).min(hay.len());
+    let end = (range.location as usize)
+        .saturating_add(range.length as usize)
+        .min(hay.len());
+    let n = needle.len();
+
+    let mut out: Vec<u16> = Vec::with_capacity(hay.len());
+    out.extend_from_slice(&hay[..start]);
+    let mut i = start;
+    let mut count: NSUInteger = 0;
+    while i < end {
+        let is_match = n > 0
+            && i + n <= end
+            && hay[i..i + n].iter().zip(needle.iter()).all(|(&a, &b)| {
+                if case_insensitive {
+                    fold(a) == fold(b)
+                } else {
+                    a == b
+                }
+            });
+        if is_match {
+            out.extend_from_slice(&repl);
+            i += n;
+            count += 1;
+        } else {
+            out.push(hay[i]);
+            i += 1;
+        }
+    }
+    out.extend_from_slice(&hay[end..]);
+
+    if count > 0 {
+        let new_string = from_rust_string(env, String::from_utf16_lossy(&out));
+        () = msg![env; this setString:new_string];
+        release(env, new_string);
+    }
+    count
+                                   }
 
 @end
 
